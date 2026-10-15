@@ -37,8 +37,9 @@ from openai import OpenAI
 HERE = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE = os.path.join(HERE, "workspace")
 os.makedirs(WORKSPACE, exist_ok=True)
-MAX_STEPS = 25
-MAX_DOWNLOAD_MB = 500
+# Lite defaults for phone: fewer steps = fewer Cloudflare neurons + less data/battery.
+MAX_STEPS = int(os.environ.get("KUBER_MAX_STEPS", "12"))
+MAX_DOWNLOAD_MB = int(os.environ.get("KUBER_MAX_MB", "50"))
 HEADERS = {"User-Agent": "Mozilla/5.0 (kuber-android)"}
 
 # ---------------- choose the brain (same as PC agent) ----------------
@@ -71,8 +72,8 @@ elif opts.cloudflare:
         sys.exit("Cloudflare not set. Run:  export CF_ACCOUNT_ID=... CF_API_TOKEN=...\n"
                  "(use the same values as cf-setup on your PC)")
     client = OpenAI(base_url=f"https://api.cloudflare.com/client/v4/accounts/{acct}/ai/v1",
-                    api_key=tok, timeout=600, max_retries=2)
-    MODEL = opts.model or os.environ.get("CF_AGENT_MODEL", "@cf/qwen/qwen3-30b-a3b-fp8")
+                    api_key=tok, timeout=120, max_retries=1)
+    MODEL = opts.model or os.environ.get("CF_AGENT_MODEL", "@cf/meta/llama-3.1-8b-instruct")
     BRAIN = f"{MODEL.split('/')[-1]} on Cloudflare"
 elif opts.gemini:
     key = os.environ.get("GEMINI_API_KEY")
@@ -110,8 +111,8 @@ if KAGGLE:
                 else {"temperature": 0.6, "top_p": 0.95})
     EXTRA = {**EXTRA, "top_k": 20}
 
-OLD_TOOL_RESULT_CHARS = 1500
-KEEP_FULL_RESULTS = 2
+OLD_TOOL_RESULT_CHARS = 1000
+KEEP_FULL_RESULTS = 1
 
 
 def compact(history):
@@ -144,7 +145,7 @@ def safe_path(path):
     return full
 
 
-def search_web(query, max_results=8):
+def search_web(query, max_results=5):
     try:
         from ddgs import DDGS
     except ImportError:
@@ -154,7 +155,7 @@ def search_web(query, max_results=8):
         or "No results."
 
 
-def search_images(query, max_results=8):
+def search_images(query, max_results=5):
     try:
         from ddgs import DDGS
     except ImportError:
@@ -197,13 +198,13 @@ def read_page(url):
         tag.decompose()
     text = re.sub(r"\n\s*\n+", "\n\n", soup.get_text("\n")).strip()
     links = [f"{a.get_text(strip=True)[:60]} -> {a['href']}" for a in soup.find_all("a", href=True)
-             if a["href"].startswith("http")][:40]
+             if a["href"].startswith("http")][:20]
     out = []
     if preview:
         out.append("LINK PREVIEW:\n" + preview)
     if title and not preview:
         out.append(f"TITLE: {title}")
-    out.append("PAGE TEXT:\n" + text[:6000] + ("\n...[page cut]" if len(text) > 6000 else ""))
+    out.append("PAGE TEXT:\n" + text[:3000] + ("\n...[page cut]" if len(text) > 3000 else ""))
     out.append("LINKS:\n" + "\n".join(links))
     return "\n\n".join(out)
 
@@ -244,7 +245,7 @@ def write_file(path, content):
 
 def read_file(path):
     with open(safe_path(path), encoding="utf-8", errors="ignore") as f:
-        return f.read()[:8000]
+        return f.read()[:4000]
 
 
 def list_files(path="."):
@@ -252,7 +253,7 @@ def list_files(path="."):
     return "\n".join(sorted(os.listdir(full))) or "(empty)"
 
 
-def workspace_tree(max_files=200):
+def workspace_tree(max_files=100):
     lines = []
     for root, dirs, files in os.walk(WORKSPACE):
         dirs[:] = [d for d in dirs if d not in ("node_modules", ".git", "__pycache__")]
@@ -337,9 +338,11 @@ def system_info():
     code, tel = _run("termux-telephony-deviceinfo", 10)
     if code == 0:
         info.append(f"Device: {tel[:400]}")
-    code, loc = _run("termux-location -p network -r once 2>/dev/null", 15)
-    if code == 0 and loc:
-        info.append(f"Location: {loc[:200]}")
+    # Location is opt-in only (GPS drains battery): export KUBER_LOCATION=1 to enable.
+    if os.environ.get("KUBER_LOCATION") == "1":
+        code, loc = _run("termux-location -p network -r once 2>/dev/null", 15)
+        if code == 0 and loc:
+            info.append(f"Location: {loc[:200]}")
     total, _, free = shutil.disk_usage(os.path.expanduser("~/storage/shared"
                                                            if os.path.exists(os.path.expanduser("~/storage/shared"))
                                                            else WORKSPACE))
