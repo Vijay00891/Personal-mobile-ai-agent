@@ -1,6 +1,8 @@
-# openai is pinned below v2: v2 needs `jiter` (Rust build) which fails on Termux.
-# 1.99.9 is the last v1 and covers everything the agent uses.
-openai==1.99.9
+# openai pinned to 1.35.14: v1.40+ needs `jiter` (Rust build) which fails on Termux,
+# and pydantic is pinned to v1 (pure Python) so nothing needs a compiler.
+# 1.35.14 already has everything the agent uses (chat.completions + tools).
+openai==1.35.14
+pydantic==1.10.13
 requests
 beautifulsoup4
 ddgs
