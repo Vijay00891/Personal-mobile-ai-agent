@@ -404,7 +404,10 @@ def _need_termux():
 
 def confirm(question):
     print(f"\n       !! {question}")
-    return input("       Allow? [y/N] ").strip().lower() == "y"
+    try:
+        return input("       Allow? [y/N] ").strip().lower() == "y"
+    except EOFError:
+        return False
 
 
 DECLINED = "The user DECLINED this. Do not retry it; ask the user what to do instead."
@@ -417,7 +420,10 @@ RISKY_CMD = re.compile(
 
 def ask_user(message):
     print(f"\n       >> AGENT NEEDS YOU: {message}")
-    reply = input("       Press Enter when done, or type a reply: ").strip()
+    try:
+        reply = input("       Press Enter when done, or type a reply: ").strip()
+    except EOFError:
+        return "(no reply: running without a terminal)"
     return reply or "Done. The user has completed it."
 
 
@@ -752,6 +758,8 @@ SYSTEM = (
     "- send_sms always confirms first (the tool does this). Never send silently.\n"
     "- send_whatsapp only pre-fills; the human taps Send. Say that clearly.\n"
     "- Never guess phone numbers. Resolve names with list_contacts; if missing, ask_user.\n"
+    "- The user's task is the first message. Never ask what the task is. "
+    "If it is vague, do the most reasonable thing first.\n"
     "- Never repeat the same tool call with the same arguments.\n"
     "When done, reply with a short summary and which files were saved."
 )

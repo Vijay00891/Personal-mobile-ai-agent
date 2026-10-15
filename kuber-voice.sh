@@ -15,6 +15,13 @@ BAT=$(termux-battery-status 2>/dev/null | grep -o '"percentage":[0-9]*' | grep -
 termux-tts-speak "$G. I am Kuber. What can I do for you?" 2>/dev/null
 
 TASK=$(termux-speech-to-text 2>/dev/null | head -1 | tr -d '\r')
+# If the user only said the name ("Kuber", "hey Kuber"), strip it and listen again
+# for the real task instead of sending a one-word task to the brain.
+TASK=$(echo "$TASK" | sed -E 's/^[^A-Za-z]*(hey|hi|ok|okay|hello)?[^A-Za-z]*(kuber|kubera|kubair|cuber|cooper)[^A-Za-z]*//I' | sed 's/^ *//')
+if [ -z "${TASK:-}" ]; then
+  termux-tts-speak "Yes? What can I do for you?" 2>/dev/null
+  TASK=$(termux-speech-to-text 2>/dev/null | head -1 | tr -d '\r')
+fi
 if [ -z "${TASK:-}" ]; then
   termux-tts-speak "I did not catch that. Run me again to retry." 2>/dev/null
   exit 0
