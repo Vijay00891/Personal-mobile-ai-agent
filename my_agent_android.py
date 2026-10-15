@@ -147,6 +147,7 @@ ap.add_argument("--api-key-env", default="AGENT_API_KEY", help="env var holding 
 ap.add_argument("--fast", action="store_true", help="Kaggle only: disable thinking")
 ap.add_argument("task", nargs="*", help="optional one-shot task (for Termux:Widget)")
 ap.add_argument("--stay", action="store_true", help="keep chat open after one-shot task")
+ap.add_argument("--voice-out", help="write the final plain answer to FILE (for termux-tts-speak)")
 opts = ap.parse_args()
 
 if opts.claude:
@@ -827,7 +828,12 @@ def show_answer(text, seconds, steps):
     console.print()
 
 
+# ---------------- agent loop ----------------
+LAST_ANSWER = ""
+
+
 def run_task(task, history):
+    global LAST_ANSWER
     history.append({"role": "user", "content":
                     f"{task}\n\n[Files in workspace]\n{workspace_tree()}"})
     start = time.time()
@@ -836,6 +842,7 @@ def run_task(task, history):
         msg, _ = ask_brain(history, step)
         if not msg.tool_calls:
             history.append({"role": "assistant", "content": msg.content or ""})
+            LAST_ANSWER = msg.content or ""
             show_answer(msg.content, time.time() - start, step)
             return
         history.append(as_dict(msg))
@@ -880,6 +887,11 @@ def main():
     if first:
         console.print(Rule(style="dim"))
         run_task(first, history)
+        if opts.voice_out:
+            plain = re.sub(r"[#*_`>\[\]()]", "", LAST_ANSWER or "Done.")
+            plain = re.sub(r"https?://\S+", "link", plain).strip()[:600]
+            with open(os.path.expanduser(opts.voice_out), "w", encoding="utf-8") as f:
+                f.write(plain or "Done.")
         if not opts.stay:
             return
     while True:
