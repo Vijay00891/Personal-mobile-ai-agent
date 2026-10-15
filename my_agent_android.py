@@ -93,6 +93,17 @@ class _Completions:
                     continue
                 r.raise_for_status()
                 return _ChatResponse(r.json())
+            except requests.HTTPError as e:
+                try:
+                    detail = e.response.text[:300]
+                except Exception:
+                    detail = ""
+                last = f"{e} | body: {detail}"
+                if e.response is not None and (e.response.status_code in (408, 409, 429)
+                                               or e.response.status_code >= 500):
+                    time.sleep(2 * (attempt + 1))
+                    continue
+                break
             except (requests.RequestException, ValueError) as e:
                 last = str(e)[:300]
                 time.sleep(2 * (attempt + 1))
@@ -152,7 +163,7 @@ elif opts.cloudflare:
                  "(use the same values as cf-setup on your PC)")
     client = MiniClient(base_url=f"https://api.cloudflare.com/client/v4/accounts/{acct}/ai/v1",
                     api_key=tok, timeout=120, max_retries=1)
-    MODEL = opts.model or os.environ.get("CF_AGENT_MODEL", "@cf/meta/llama-3.1-8b-instruct")
+    MODEL = opts.model or os.environ.get("CF_AGENT_MODEL", "@cf/qwen/qwen3-30b-a3b-fp8")
     BRAIN = f"{MODEL.split('/')[-1]} on Cloudflare"
 elif opts.gemini:
     key = os.environ.get("GEMINI_API_KEY")
