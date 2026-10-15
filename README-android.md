@@ -99,6 +99,28 @@ python my_agent_android.py --cloudflare --stay "turn on wifi and tell me battery
   use `termux-wake-lock` while the agent works.
 * First SMS/contact call shows a permission popup — accept it, then retry.
 
+## Voice (tap-to-talk)
+
+* `kuber-voice.sh` — greets you, listens once, runs the task, speaks the answer.
+  Nothing runs in the background (zero idle drain).
+* Speech-to-text uses Android's recognizer (free, via Termux:API).
+* Voice output uses **ElevenLabs** (natural) when `ELEVEN_API_KEY` is set,
+  otherwise the free on-device voice:
+  ```bash
+  export ELEVEN_API_KEY="sk_..."   # free 10k chars/month at elevenlabs.io
+  echo 'export ELEVEN_API_KEY="sk_..."' >> ~/.bashrc
+  ```
+  Optional: `ELEVEN_VOICE` (default Rachel), `ELEVEN_MODEL`
+  (default `eleven_turbo_v2_5`). Answers are capped at ~600 chars per reply,
+  so one tap costs ~600 free characters.
+* Home-screen button: install Termux:Widget (F-Droid), then create
+  `~/.shortcuts/Kuber` containing:
+  ```bash
+  #!/data/data/com.termux/files/usr/bin/bash
+  export KUBER_HOME=~/kuber-android
+  bash ~/kuber-android/kuber-voice.sh
+  ```
+
 ## Troubleshooting
 
 * `termux-api not found` → `pkg install termux-api` + install Termux:API app, restart Termux.

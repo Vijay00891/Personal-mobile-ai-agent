@@ -6,13 +6,16 @@
 # Needs: Termux:API app (for speech + TTS). Optional: Termux:Widget app, then copy
 # this file to ~/.shortcuts/ to get a "Kuber" button on your home screen.
 set -u
-cd "$(dirname "$0")"
+# Repo dir: same folder normally; set KUBER_HOME when launched from elsewhere
+# (e.g. a Termux:Widget wrapper in ~/.shortcuts/).
+KUBER_HOME="${KUBER_HOME:-$(dirname "$0")}"
+cd "$KUBER_HOME"
 
 H=$(date +%H)
 if [ "$H" -lt 12 ]; then G="Good morning"; elif [ "$H" -lt 17 ]; then G="Good afternoon"; else G="Good evening"; fi
 BAT=$(termux-battery-status 2>/dev/null | grep -o '"percentage":[0-9]*' | grep -o '[0-9]*')
 [ -n "${BAT:-}" ] && G="$G. Battery $BAT percent."
-termux-tts-speak "$G. I am Kuber. What can I do for you?" 2>/dev/null
+"$KUBER_HOME/kuber-speak.sh" "$G. I am Kuber. What can I do for you?"
 
 TASK=$(termux-speech-to-text 2>/dev/null | head -1 | tr -d '\r')
 # If the user only said the name ("Kuber", "hey Kuber"), strip it and listen again
@@ -32,5 +35,5 @@ termux-tts-speak "Working on it." 2>/dev/null
 ANS="$PREFIX/tmp/kuber-ans.txt"
 export PYTHONDONTWRITEBYTECODE=1
 python my_agent_android.py --cloudflare --voice-out "$ANS" -- "$TASK"
-[ -f "$ANS" ] && termux-tts-speak "$(head -c 600 "$ANS")" 2>/dev/null
+[ -f "$ANS" ] && "$KUBER_HOME/kuber-speak.sh" "$(head -c 600 "$ANS")"
 rm -f "$ANS"
