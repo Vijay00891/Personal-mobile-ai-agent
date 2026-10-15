@@ -146,24 +146,50 @@ def safe_path(path):
 
 
 def search_web(query, max_results=5):
-    try:
-        from ddgs import DDGS
-    except ImportError:
-        from duckduckgo_search import DDGS
-    results = DDGS().text(query, max_results=int(max_results))
-    return "\n".join(f"- {r.get('title')}\n  {r.get('href')}\n  {r.get('body')}" for r in results) \
-        or "No results."
+    """DuckDuckGo web search using plain requests (no ddgs package: it needs Rust on phones)."""
+    # lite endpoint: simpler markup and far less bot-blocking than the html endpoint.
+    r = requests.post("https://lite.duckduckgo.com/lite/", data={"q": query},
+                      headers={"User-Agent": BROWSER_HEADERS["User-Agent"]}, timeout=25)
+    r.raise_for_status()
+    soup = BeautifulSoup(r.text, "html.parser")
+    rows = soup.find_all("tr")
+    out, i = [], 0
+    while i < len(rows) and len(out) < int(max_results):
+        a = rows[i].find("a", href=True)
+        if a and a["href"].startswith("http"):
+            title, link = a.get_text(strip=True), a["href"]
+            snip = ""
+            if i + 1 < len(rows):
+                s = rows[i + 1].find("td", class_="result-snippet")
+                if s:
+                    snip = s.get_text(" ", strip=True)
+            out.append(f"- {title}\n  {link}\n  {snip}")
+        i += 1
+    return "\n".join(out) or "No results."
 
 
 def search_images(query, max_results=5):
+    """DuckDuckGo image search using plain requests (no ddgs package)."""
+    s = requests.Session()
+    s.headers.update(BROWSER_HEADERS)
+    home = s.get("https://duckduckgo.com/", params={"q": query}, timeout=20).text
+    m = re.search(r'vqd["\']?\s*[:=]\s*["\']?([\d-]+)', home)
+    if not m:
+        return "No images found."
+    vqd = m.group(1)
+    r = s.get("https://duckduckgo.com/i.js",
+              params={"l": "us-en", "o": "json", "q": query,
+                      "vqd": vqd, "f": ",,,", "p": "1"}, timeout=25)
+    r.raise_for_status()
     try:
-        from ddgs import DDGS
-    except ImportError:
-        from duckduckgo_search import DDGS
-    results = DDGS().images(query, max_results=int(max_results))
-    return "\n".join(
-        f"- {r.get('title')} ({r.get('width')}x{r.get('height')})\n  image_url: {r.get('image')}\n"
-        f"  source page: {r.get('url')}" for r in results) or "No images found."
+        results = r.json().get("results", [])
+    except ValueError:
+        return "No images found."
+    out = []
+    for it in results[:int(max_results)]:
+        out.append(f"- {it.get('title')} ({it.get('width')}x{it.get('height')})\n"
+                   f"  image_url: {it.get('image')}\n  source page: {it.get('url')}")
+    return "\n".join(out) or "No images found."
 
 
 BROWSER_HEADERS = {

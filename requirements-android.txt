@@ -1,9 +1,7 @@
-# openai pinned to 1.35.14: v1.40+ needs `jiter` (Rust build) which fails on Termux,
-# and pydantic is pinned to v1 (pure Python) so nothing needs a compiler.
-# 1.35.14 already has everything the agent uses (chat.completions + tools).
+# No ddgs/duckduckgo-search: newer versions need `primp` (Rust build) which fails
+# on Termux. Web/image search is vendored in my_agent_android.py with requests.
 openai==1.35.14
 pydantic==1.10.13
 requests
 beautifulsoup4
-ddgs
 rich
