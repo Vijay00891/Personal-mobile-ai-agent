@@ -1,4 +1,6 @@
-openai
+# openai is pinned below v2: v2 needs `jiter` (Rust build) which fails on Termux.
+# 1.99.9 is the last v1 and covers everything the agent uses.
+openai==1.99.9
 requests
 beautifulsoup4
 ddgs
