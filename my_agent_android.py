@@ -32,7 +32,86 @@ from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
-from openai import OpenAI
+
+
+# ---------------- tiny OpenAI-compatible HTTP client ----------------
+# Replaces the `openai` pip package (it drags pydantic/Rust builds that break
+# on Termux Python). Only what the agent uses: chat.completions.create.
+class _Fn:
+    def __init__(self, d):
+        self.name = d.get("name", "")
+        self.arguments = d.get("arguments", "{}")
+
+
+class _ToolCall:
+    def __init__(self, d):
+        self.id = d.get("id", "")
+        self.function = _Fn(d.get("function", {}) or {})
+
+
+class _Message:
+    def __init__(self, d):
+        self.content = d.get("content") or ""
+        calls = d.get("tool_calls") or []
+        self.tool_calls = [_ToolCall(t) for t in calls if isinstance(t, dict)]
+
+
+class _Choice:
+    def __init__(self, d):
+        self.message = _Message(d.get("message", {}) or {})
+
+
+class _ChatResponse:
+    def __init__(self, d):
+        choices = d.get("choices", []) or []
+        if not choices:
+            raise RuntimeError(f"Brain returned no choices: {str(d)[:300]}")
+        self.choices = [_Choice(c) for c in choices]
+
+
+class _Completions:
+    def __init__(self, client):
+        self._client = client
+
+    def create(self, model, messages, tools=None, extra_body=None, **kwargs):
+        body = {"model": model, "messages": messages}
+        if tools:
+            body["tools"] = tools
+        if extra_body:
+            body.update(extra_body)
+        body.update(kwargs)
+        url = f"{self._client.base_url}/chat/completions"
+        tries = 1 + max(0, int(self._client.max_retries or 0))
+        last = None
+        for attempt in range(tries):
+            try:
+                r = requests.post(url, json=body, headers=self._client.headers,
+                                  timeout=self._client.timeout)
+                if r.status_code in (408, 409, 429) or r.status_code >= 500:
+                    last = f"HTTP {r.status_code}: {r.text[:300]}"
+                    time.sleep(2 * (attempt + 1))
+                    continue
+                r.raise_for_status()
+                return _ChatResponse(r.json())
+            except (requests.RequestException, ValueError) as e:
+                last = str(e)[:300]
+                time.sleep(2 * (attempt + 1))
+        raise RuntimeError(f"Brain request failed after {tries} tries: {last}")
+
+
+class _Chat:
+    def __init__(self, client):
+        self.completions = _Completions(client)
+
+
+class MiniClient:
+    def __init__(self, base_url, api_key, timeout=120, max_retries=1, default_headers=None):
+        self.base_url = base_url.rstrip("/")
+        self.headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json",
+                        **(default_headers or {})}
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self.chat = _Chat(self)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE = os.path.join(HERE, "workspace")
@@ -63,7 +142,7 @@ if opts.claude:
     key = os.environ.get("ANTHROPIC_API_KEY")
     if not key:
         sys.exit('Set ANTHROPIC_API_KEY first:  export ANTHROPIC_API_KEY="sk-ant-..."')
-    client = OpenAI(base_url="https://api.anthropic.com/v1/", api_key=key)
+    client = MiniClient(base_url="https://api.anthropic.com/v1/", api_key=key)
     MODEL = opts.model or "claude-sonnet-5-5"
     BRAIN = f"{MODEL} (Claude API)"
 elif opts.cloudflare:
@@ -71,7 +150,7 @@ elif opts.cloudflare:
     if not (acct and tok):
         sys.exit("Cloudflare not set. Run:  export CF_ACCOUNT_ID=... CF_API_TOKEN=...\n"
                  "(use the same values as cf-setup on your PC)")
-    client = OpenAI(base_url=f"https://api.cloudflare.com/client/v4/accounts/{acct}/ai/v1",
+    client = MiniClient(base_url=f"https://api.cloudflare.com/client/v4/accounts/{acct}/ai/v1",
                     api_key=tok, timeout=120, max_retries=1)
     MODEL = opts.model or os.environ.get("CF_AGENT_MODEL", "@cf/meta/llama-3.1-8b-instruct")
     BRAIN = f"{MODEL.split('/')[-1]} on Cloudflare"
@@ -79,7 +158,7 @@ elif opts.gemini:
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
         sys.exit('Set GEMINI_API_KEY first:  export GEMINI_API_KEY="..."')
-    client = OpenAI(base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+    client = MiniClient(base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
                     api_key=key, timeout=600, max_retries=2)
     MODEL = opts.model or os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
     BRAIN = f"{MODEL} (Google)"
@@ -89,7 +168,7 @@ elif opts.base_url:
         sys.exit(f"Set {opts.api_key_env} first.")
     if not opts.model:
         sys.exit("Also pass --model with --base-url.")
-    client = OpenAI(base_url=opts.base_url, api_key=key)
+    client = MiniClient(base_url=opts.base_url, api_key=key)
     MODEL = opts.model
     BRAIN = f"{MODEL} ({opts.base_url})"
 else:
@@ -97,7 +176,7 @@ else:
     base = os.environ.get("KAGGLE_LLM_URL")
     if not base:
         sys.exit("No brain selected. On phone use:  python my_agent_android.py --cloudflare")
-    client = OpenAI(base_url=f"{base}/v1", api_key="kaggle", timeout=900, max_retries=1,
+    client = MiniClient(base_url=f"{base}/v1", api_key="kaggle", timeout=900, max_retries=1,
                     default_headers={"ngrok-skip-browser-warning": "1"})
     MODEL = opts.model or os.environ.get("KAGGLE_LLM_MODEL", "qwen3.6:27b")
     BRAIN = f"{MODEL} on Kaggle"
