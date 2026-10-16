@@ -1,0 +1,26 @@
+# Kuber Termux commands - copy ONE line at a time, press Enter after each
+# Replace sk_paste-your-key-here with your real key in line 1 only. Keep all $ signs.
+
+# 1. Set ElevenLabs key (single line)
+KEY="sk_paste-your-key-here"; export ELEVEN_API_KEY="$KEY"; sed -i '/ELEVEN_API_KEY/d' ~/.bashrc; echo "export ELEVEN_API_KEY=\"$KEY\"" >> ~/.bashrc; source ~/.bashrc; echo ${#ELEVEN_API_KEY}
+
+# 2. Check key is set (expect ~32)
+env | grep ELEVEN
+
+# 3. Test voice
+bash ~/kuber-android/kuber-speak.sh "test"
+
+# 4. If 402 but website shows 10000 credits, see exact reason (single line)
+curl -s -X POST "https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE:-21m00Tcm4TlvDq8ikWAM}" -H "xi-api-key: $ELEVEN_API_KEY" -H "Content-Type: application/json" -d '{"text":"hi","model_id":"eleven_turbo_v2_5"}'; echo
+
+# 5. Reset to free Rachel voice (fixes paid_plan_required 402)
+unset ELEVEN_VOICE; sed -i '/ELEVEN_VOICE/d' ~/.bashrc; source ~/.bashrc; bash ~/kuber-android/kuber-speak.sh "test"
+
+# 6. Disable ElevenLabs, use free device voice (unlimited)
+sed -i '/ELEVEN_API_KEY/d' ~/.bashrc; unset ELEVEN_API_KEY; source ~/.bashrc; bash ~/kuber-android/kuber-speak.sh "test"
+
+# 7. Verify brain
+python ~/kuber-android/my_agent_android.py --cloudflare
+
+# 8. Verify tap-to-talk
+bash ~/kuber-android/kuber-voice.sh
